@@ -1,0 +1,179 @@
+type: edu
+custom_name: Train & visualize
+files:
+  - name: student.py
+    visible: true
+    text: |
+      import numpy as np
+      import pandas as pd
+      from matplotlib import pyplot as plt
+      
+      
+      def one_hot(data: np.ndarray) -> np.ndarray:
+          y_train = np.zeros((data.size, data.max() + 1))
+          rows = np.arange(data.size)
+          y_train[rows, data] = 1
+          return y_train
+      
+      
+      def plot(loss_history: list, accuracy_history: list, filename='plot'):
+          # function to visualize learning process at stage 4
+          n_epochs = len(loss_history)
+          plt.figure(figsize=(20, 10))
+          plt.subplot(1, 2, 1)
+          plt.plot(loss_history)
+          plt.xlabel('Epoch number')
+          plt.ylabel('Loss')
+          plt.xticks(np.arange(0, n_epochs, 4))
+          plt.title('Loss on train dataframe from epoch')
+          plt.grid()
+          plt.subplot(1, 2, 2)
+          plt.plot(accuracy_history)
+          plt.xlabel('Epoch number')
+          plt.ylabel('Accuracy')
+          plt.xticks(np.arange(0, n_epochs, 4))
+          plt.title('Accuracy on test dataframe from epoch')
+          plt.grid()
+          plt.savefig(f'{filename}.png')
+      
+      
+      def scale(data: np.ndarray) -> np.ndarray:
+          return data / data.max()
+      
+      
+      def xavier(n_in: int, n_out: int) -> np.ndarray:
+          limit = np.sqrt(6) / np.sqrt(n_in + n_out)
+          return np.random.uniform(-limit, limit, (n_in, n_out))
+      
+      
+      def sigmoid(x: np.ndarray) -> np.ndarray:
+          return 1 / (1 + np.exp(-x))
+      
+      
+      def d_sigmoid(x: np.ndarray) -> np.ndarray:
+          return x * (1 - x)
+      
+      
+      def mse(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
+          return np.mean((y_pred - y_true) ** 2)
+      
+      
+      def d_mse(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
+          return 2 * (y_pred - y_true)
+      
+      
+      class OneLayerNeural:
+          def __init__(self, n_features, n_classes):
+              self.weights = xavier(n_features, n_classes)
+              self.bias = xavier(1, n_classes)
+              self.prediction = None
+      
+          def forward(self, X: np.ndarray) -> None:
+              self.prediction = sigmoid(np.dot(X, self.weights) + self.bias)
+      
+          def backprop(self, X: np.ndarray, y: np.ndarray, alpha: float = 0.1) -> None:
+              grad_weights = np.dot(X.T, d_sigmoid(self.prediction) * d_mse(self.prediction, y)) / X.shape[0]
+              grad_bias = np.mean(d_sigmoid(self.prediction) * d_mse(self.prediction, y), axis=0)
+              self.weights -= alpha * grad_weights
+              self.bias -= alpha * grad_bias
+      
+      
+      def main():
+          # Read train, test data.
+          raw_train = pd.read_csv('../Data/fashion-mnist_train.csv')
+          raw_test = pd.read_csv('../Data/fashion-mnist_test.csv')
+          X_train = raw_train[raw_train.columns[1:]].values
+          X_test = raw_test[raw_test.columns[1:]].values
+          y_train = one_hot(raw_train['label'].values)
+          y_test = one_hot(raw_test['label'].values)
+          # rescale the data
+          X_train_s, X_test_s = scale(X_train), scale(X_test)
+      
+          # network operations
+          network = OneLayerNeural(X_train_s.shape[1], y_train.shape[1])
+          for _ in range(2):
+              network.forward(X_train_s[:2])
+              network.backprop(X_train_s[:2], y_train[:2])
+      
+          # test answers
+          ans_mse = mse(np.array([-1, 0, 1, 2]), np.array(([4, 3, 2, 1]))).flatten().tolist()
+          ans_dmse = d_mse(np.array([-1, 0, 1, 2]), np.array(([4, 3, 2, 1]))).flatten().tolist()
+          ans_dsigm = d_sigmoid(sigmoid(np.array([-1, 0, 1, 2]))).flatten().tolist()
+          net_mse = mse(network.prediction, y_train[:2]).flatten().tolist()
+          print(ans_mse, ans_dmse, ans_dsigm, net_mse)
+      
+      
+      if __name__ == '__main__':
+          main()
+    learner_created: false
+  - name: test/__init__.py
+    visible: false
+    learner_created: false
+  - name: test/tests.py
+    visible: false
+    text: |-
+      import numpy as np
+      from hstest import StageTest, TestCase, CheckResult, PlottingTest
+      from hstest.stage_test import List
+      from utils.utils import get_list, full_check, custom_uniform
+      
+      np.random.uniform = custom_uniform
+      
+      
+      # The source data I will test on
+      
+      true_acc_res = [0.0792]
+      true_acc_history_res = [0.6438, 0.8349, 0.8429, 0.8456, 0.8466, 0.848, 0.8497, 0.8507, 0.851, 0.8525, 0.8531, 0.8525,
+                              0.8534, 0.8533, 0.8541, 0.8539, 0.854, 0.8541, 0.8543, 0.8549]
+      
+      
+      class Tests4(PlottingTest):
+      
+          def generate(self) -> List[TestCase]:
+              return [TestCase(time_limit=1000000)]
+      
+          def check(self, reply: str, attach):
+              reply = reply.strip().lower()
+      
+              if len(reply) == 0:
+                  return CheckResult.wrong("No output was printed")
+      
+              if reply.count('[') != 2 or reply.count(']') != 2:
+                  return CheckResult.wrong('No expected lists were found in output')
+      
+              # Getting the student's results from the reply
+      
+              try:
+                  acc_res, reply = get_list(reply)
+              except Exception:
+                  return CheckResult.wrong('Seems that accuracy output is in wrong format')
+      
+              try:
+                  acc_history_res, reply = get_list(reply)
+              except Exception:
+                  return CheckResult.wrong('Seems that accuracy log output is in wrong format')
+      
+              check_result = full_check(acc_res, true_acc_res, 'accuracy')
+              if check_result:
+                  return check_result
+      
+              check_result = full_check(acc_history_res, true_acc_history_res, 'train sequence')
+              if check_result:
+                  return check_result
+      
+              return CheckResult.correct()
+      
+      
+      if __name__ == '__main__':
+          Tests4().run_tests()
+    learner_created: false
+  - name: tests.py
+    visible: false
+    text: |-
+      from test.tests import Tests4
+      
+      if __name__ == '__main__':    Tests4().run_tests()
+    learner_created: false
+feedback_link: https://hyperskill.org/projects/250/stages/1257/implement#comment
+status: Solved
+record: 3
